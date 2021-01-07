@@ -24,6 +24,11 @@ begin
   WriteLn('e.g.  GpxCmd /fD:\GPXFiles /id /in /io');
 end;
 
+procedure HandleOnMessage(Sender: TObject; aMessage: string);
+begin
+  WriteLn(aMessage);
+end;
+
 procedure HandleError(const E:Exception);
 begin
   writeLn(E.Message);
@@ -35,10 +40,13 @@ var
   Param: string;
   functions: TGPXFunctions;
   FolderName: string;
+  TargetFolderName: string;
   fRenameOptions: TGPXFileOptions;
   Renamer: TGPXFolderRenamer;
   res: boolean;
 begin
+  FolderName := EmptyStr;
+  TargetFolderName := EmptyStr;
   try
     WriteLn('GPX Utils');
     WriteLn('');
@@ -53,13 +61,20 @@ begin
         Param := GetParamStr(L);
         if (Param <> EmptyStr) and (Copy(Param, 1, 1) = '/') then
         begin
-          Flag := Copy(Param, 2, 1);  // e.g. "F"
+          Flag := Copy(Param, 2, 1);  // e.g. "F" or "C"
           Param := Copy(Param, 3, Length(Param));
 
-          if SameText(Flag, 'F') then
+          if SameText(Flag, 'F') then  // FOLDER RENAME
           begin
             Include(Functions, TGPXFunction.rename);
             FolderName := Param;
+          end;
+
+          if SameText(Flag, 'C') then // COPY flag with destination folder - REQUIRE /F flag too
+          begin
+            Include(Functions, TGPXFunction.Copy);
+            Exclude(Functions, TGPXFunction.Rename);
+            TargetFolderName := Param;
           end;
 
           if SameText(Flag, 'i') then
@@ -81,15 +96,13 @@ begin
       if (TGPXFunction.rename in Functions) then
       begin
         if fRenameOptions = [] then
-          fRenameOptions := [TGPXFileOption.incDate, TGPXFileOption.incName];
+          fRenameOptions := [TGPXFileOption.incDate, TGPXFileOption.incName, TGPXFileOption.incOriginalName];
         WriteLn('Folder rename option specified for');
         WriteLn(FolderName);
 
         Renamer := TGPXFolderRenamer.Create;
         try
-          Renamer.PathSpec := FolderName;
-
-          res := Renamer.Execute(fRenameOptions,
+          res := Renamer.Execute(FolderName, TargetFolderName, fRenameOptions,
 
             procedure(S: string)
             begin
@@ -99,11 +112,13 @@ begin
             procedure(E: Exception)
             begin
               WriteLn(E.Message);
-            end
+            end,
+
+            HandleOnMessage
 
           );
           if res then
-            WriteLn(Format('All files in %s renamed', [Renamer.PathSpec]))
+            WriteLn(Format('All files in %s renamed', [Renamer.FolderPath]))
           else
             WriteLn('Folder Rename was unsuccessful');
 
@@ -115,7 +130,6 @@ begin
       end;
 
     end;
-    readLn;
   except
     on E: Exception do
       Writeln(E.ClassName, ': ', E.Message);
